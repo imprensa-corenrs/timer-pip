@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Timer de Eventos</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f; --panel: #111118; --border: #2a2a40;
+    --green: #00e5a0; --yellow: #f5c518; --orange: #ff7b00; --red: #ff2d55;
+    --text: #e8e8f0; --muted: #555570;
+  }
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg); color: var(--text); font-family: 'Oswald', sans-serif;
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; padding: 2rem; overflow-x: hidden;
+  }
+
+  .container { width: 100%; max-width: 640px; display: flex; flex-direction: column; gap: 20px; }
+
+  .header {
+    display: flex; align-items: center; gap: 10px;
+    padding-bottom: 14px; border-bottom: 1px solid var(--border);
+  }
+  .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--green); box-shadow: 0 0 10px var(--green);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .header h1 {
+    font-size: 13px; letter-spacing: 4px; text-transform: uppercase;
+    color: var(--muted); font-family: 'Share Tech Mono', monospace;
+  }
+  .header span { margin-left: auto; font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--muted); }
+
+  .clock-display {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 4px;
+    padding: 36px 24px; text-align: center; transition: border-color .5s;
+  }
+  .clock-display.overtime-active { border-color: rgba(255,45,85,.5); }
+
+  .encerrar-banner {
+    display: none; font-family: 'Share Tech Mono', monospace;
+    font-size: 20px; letter-spacing: 8px; color: var(--red);
+    text-shadow: 0 0 20px rgba(255,45,85,.9); text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .clock-display.overtime-active .encerrar-banner {
+    display: block; animation: blink-slow 1.6s ease-in-out infinite;
+  }
+  @keyframes blink-slow { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+  .time-value {
+    font-size: 96px; font-weight: 700; letter-spacing: -2px; line-height: 1;
+    font-variant-numeric: tabular-nums; color: var(--green);
+    text-shadow: 0 0 40px rgba(0,229,160,.4); transition: color .5s;
+  }
+  .time-value.yellow { color: var(--yellow); }
+  .time-value.orange { color: var(--orange); }
+  .time-value.red    { color: var(--red); animation: blink-slow 1.6s ease-in-out infinite; }
+
+  .time-label {
+    font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 5px;
+    color: var(--muted); margin-top: 12px; text-transform: uppercase;
+  }
+
+  .setup-panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 4px;
+    padding: 20px; display: flex; flex-direction: column; gap: 16px;
+  }
+  .setup-panel label {
+    font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 3px;
+    color: var(--muted); text-transform: uppercase; display: block; margin-bottom: 8px;
+  }
+  .time-inputs { display: flex; gap: 12px; align-items: center; }
+  .input-group { flex: 1; position: relative; }
+  .input-group input {
+    width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 3px;
+    color: var(--text); font-family: 'Oswald', sans-serif; font-size: 32px; font-weight: 700;
+    text-align: center; padding: 12px 8px 28px; outline: none; -moz-appearance: textfield;
+  }
+  .input-group input::-webkit-inner-spin-button, .input-group input::-webkit-outer-spin-button { -webkit-appearance: none; }
+  .input-group input:focus { border-color: var(--green); }
+  .input-group input:disabled { opacity: .4; }
+  .input-group span {
+    position: absolute; bottom: 7px; left: 50%; transform: translateX(-50%);
+    font-family: 'Share Tech Mono', monospace; font-size: 9px; letter-spacing: 2px;
+    color: var(--muted); text-transform: uppercase;
+  }
+  .sep { font-size: 32px; font-weight: 700; color: var(--muted); padding-bottom: 20px; }
+
+  .presets { display: flex; gap: 8px; flex-wrap: wrap; }
+  .preset-btn {
+    font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 2px;
+    padding: 6px 14px; background: transparent; border: 1px solid var(--border);
+    border-radius: 2px; color: var(--muted); cursor: pointer; transition: all .2s;
+  }
+  .preset-btn:hover { border-color: var(--green); color: var(--green); }
+
+  .controls { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .btn {
+    font-family: 'Oswald', sans-serif; font-size: 14px; font-weight: 700;
+    letter-spacing: 3px; text-transform: uppercase; padding: 14px;
+    border: 1px solid transparent; border-radius: 3px; cursor: pointer; transition: all .15s;
+  }
+  .btn-start { background: var(--green); color: #000; grid-column: span 2; border-color: var(--green); }
+  .btn-start:hover { box-shadow: 0 4px 24px rgba(0,229,160,.4); }
+  .btn-start.paused { background: transparent; color: var(--green); }
+  .btn-reset { background: var(--border); color: var(--muted); }
+  .btn-reset:hover { background: #3a3a55; color: var(--text); }
+
+  .btn-overlay {
+    background: #1a1a2e; border: 1px solid var(--border); color: var(--text);
+    grid-column: span 3; display: flex; align-items: center; justify-content: center; gap: 8px;
+    font-size: 12px;
+  }
+  .btn-overlay:hover { border-color: var(--green); color: var(--green); }
+  .btn-overlay.active { border-color: var(--green); color: var(--green); background: rgba(0,229,160,.08); }
+
+  .status {
+    font-family: 'Share Tech Mono', monospace; font-size: 10px; letter-spacing: 3px;
+    color: var(--muted); text-align: center; padding-top: 4px;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <div class="dot"></div>
+    <h1>Timer de Apresentação</h1>
+    <span id="clockNow">--:--:--</span>
+  </div>
+
+  <div class="clock-display" id="clockDisplay">
+    <div class="encerrar-banner">ENCERRAR</div>
+    <div class="time-value" id="timeDisplay">00:00</div>
+    <div class="time-label" id="timeLabel">AGUARDANDO INÍCIO</div>
+  </div>
+
+  <div class="setup-panel">
+    <div>
+      <label>Duração da apresentação</label>
+      <div class="time-inputs">
+        <div class="input-group"><input type="number" id="inputH" min="0" max="23" value="0"><span>horas</span></div>
+        <div class="sep">:</div>
+        <div class="input-group"><input type="number" id="inputM" min="0" max="59" value="30"><span>min</span></div>
+        <div class="sep">:</div>
+        <div class="input-group"><input type="number" id="inputS" min="0" max="59" value="0"><span>seg</span></div>
+      </div>
+    </div>
+    <div>
+      <label>Presets rápidos</label>
+      <div class="presets">
+        <button class="preset-btn" onclick="setPreset(5,0)">5 min</button>
+        <button class="preset-btn" onclick="setPreset(10,0)">10 min</button>
+        <button class="preset-btn" onclick="setPreset(15,0)">15 min</button>
+        <button class="preset-btn" onclick="setPreset(20,0)">20 min</button>
+        <button class="preset-btn" onclick="setPreset(30,0)">30 min</button>
+        <button class="preset-btn" onclick="setPreset(45,0)">45 min</button>
+        <button class="preset-btn" onclick="setPreset(60,0)">1 hora</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="btn btn-start" id="btnStart" onclick="toggleTimer()">▶ INICIAR</button>
+    <button class="btn btn-reset" onclick="resetTimer()">↺ RESET</button>
+    <button class="btn btn-overlay" id="btnOverlay" onclick="toggleOverlay()">⧉ JANELA FLUTUANTE (transparente)</button>
+  </div>
+
+  <div class="status" id="statusMsg">Configure o tempo e clique em Iniciar</div>
+</div>
+
+<script>
+  const { ipcRenderer } = require('electron');
+
+  let totalSeconds = 0, remainingSeconds = 0, timerInterval = null;
+  let running = false, started = false, overlayOpen = false;
+
+  const timeDisplay  = document.getElementById('timeDisplay');
+  const timeLabel    = document.getElementById('timeLabel');
+  const btnStart     = document.getElementById('btnStart');
+  const btnOverlay   = document.getElementById('btnOverlay');
+  const statusMsg    = document.getElementById('statusMsg');
+  const clockDisplay = document.getElementById('clockDisplay');
+
+  function updateClock() {
+    document.getElementById('clockNow').textContent = new Date().toLocaleTimeString('pt-BR', { hour12: false });
+  }
+  setInterval(updateClock, 1000); updateClock();
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function formatTime(secs) {
+    const neg = secs < 0; const abs = Math.abs(secs);
+    const h = Math.floor(abs / 3600), m = Math.floor((abs % 3600) / 60), s = abs % 60;
+    return `${neg ? '-' : ''}${h > 0 ? pad(h) + ':' : ''}${pad(m)}:${pad(s)}`;
+  }
+  function isOvertime() { return started && totalSeconds > 0 && remainingSeconds <= 0; }
+  function getInputSeconds() {
+    return (parseInt(document.getElementById('inputH').value) || 0) * 3600
+         + (parseInt(document.getElementById('inputM').value) || 0) * 60
+         + (parseInt(document.getElementById('inputS').value) || 0);
+  }
+  function setInputsDisabled(v) {
+    ['inputH','inputM','inputS'].forEach(id => document.getElementById(id).disabled = v);
+  }
+
+  function setColorPhase(phase) {
+    timeDisplay.className = 'time-value';
+    if (phase === 'yellow') timeDisplay.classList.add('yellow');
+    else if (phase === 'orange') timeDisplay.classList.add('orange');
+    else if (phase === 'red') timeDisplay.classList.add('red');
+  }
+
+  function updateDisplayFromInputs() {
+    timeDisplay.textContent = formatTime(getInputSeconds());
+    setColorPhase('idle');
+    timeLabel.textContent = 'AGUARDANDO INÍCIO';
+    clockDisplay.classList.remove('overtime-active');
+  }
+
+  function sendState() {
+    ipcRenderer.send('timer-state', { remainingSeconds, totalSeconds, running, started });
+  }
+
+  function updateUI() {
+    timeDisplay.textContent = formatTime(remainingSeconds);
+    if (isOvertime()) {
+      clockDisplay.classList.add('overtime-active');
+      setColorPhase('red');
+      timeLabel.textContent = 'TEMPO ESGOTADO';
+    } else {
+      clockDisplay.classList.remove('overtime-active');
+      if (remainingSeconds <= 60) { setColorPhase('red'); timeLabel.textContent = '⚠ ÚLTIMO MINUTO'; }
+      else if (remainingSeconds <= 120) { setColorPhase('orange'); timeLabel.textContent = '⚠ 2 MINUTOS RESTANTES'; }
+      else if (remainingSeconds <= 300) { setColorPhase('yellow'); timeLabel.textContent = '⚡ 5 MINUTOS RESTANTES'; }
+      else { setColorPhase('idle'); timeLabel.textContent = 'EM ANDAMENTO'; }
+    }
+    sendState();
+  }
+
+  function setPreset(m, s) {
+    document.getElementById('inputH').value = 0;
+    document.getElementById('inputM').value = m;
+    document.getElementById('inputS').value = s;
+    if (running || started) resetTimer(); else updateDisplayFromInputs();
+  }
+
+  ['inputH','inputM','inputS'].forEach(id => {
+    document.getElementById(id).addEventListener('input', () => { if (!running && !started) updateDisplayFromInputs(); });
+  });
+
+  function toggleTimer() {
+    if (!running) {
+      if (!started) {
+        totalSeconds = getInputSeconds();
+        if (totalSeconds <= 0) { statusMsg.textContent = 'Configure um tempo válido antes de iniciar.'; return; }
+        remainingSeconds = totalSeconds;
+        started = true;
+        setInputsDisabled(true);
+      }
+      running = true;
+      timerInterval = setInterval(() => { remainingSeconds--; updateUI(); }, 1000);
+      btnStart.textContent = '⏸ PAUSAR';
+      btnStart.classList.remove('paused');
+      statusMsg.textContent = 'Cronômetro ativo';
+      updateUI();
+    } else {
+      clearInterval(timerInterval);
+      running = false;
+      btnStart.textContent = isOvertime() ? '▶ CONTINUAR' : '▶ RETOMAR';
+      btnStart.classList.add('paused');
+      statusMsg.textContent = 'Pausado · Clique para retomar';
+      sendState();
+    }
+  }
+
+  function resetTimer() {
+    clearInterval(timerInterval);
+    running = false; started = false; remainingSeconds = 0; totalSeconds = 0;
+    btnStart.textContent = '▶ INICIAR';
+    btnStart.classList.remove('paused');
+    statusMsg.textContent = 'Resetado · Configure o tempo e clique em Iniciar';
+    setInputsDisabled(false);
+    updateDisplayFromInputs();
+    sendState();
+  }
+
+  function toggleOverlay() {
+    ipcRenderer.send('toggle-overlay');
+    overlayOpen = !overlayOpen;
+    btnOverlay.classList.toggle('active', overlayOpen);
+    btnOverlay.textContent = overlayOpen ? '⧉ FECHAR JANELA FLUTUANTE' : '⧉ JANELA FLUTUANTE (transparente)';
+    if (overlayOpen) sendState();
+  }
+
+  ipcRenderer.on('overlay-closed', () => {
+    overlayOpen = false;
+    btnOverlay.classList.remove('active');
+    btnOverlay.textContent = '⧉ JANELA FLUTUANTE (transparente)';
+  });
+
+  updateDisplayFromInputs();
+</script>
+</body>
+</html>

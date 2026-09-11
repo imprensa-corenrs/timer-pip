@@ -1,0 +1,33 @@
+{
+  "name": "timer-pip",
+  "version": "1.0.0",
+  "description": "Timer de eventos com janela flutuante transparente, sempre no topo",
+  "main": "main.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.timerpip.app",
+    "productName": "TimerPiP",
+    "files": [
+      "main.js",
+      "src/**/*"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "portable"
+    },
+    "portable": {
+      "artifactName": "TimerPiP-portable.exe"
+    }
+  }
+}
