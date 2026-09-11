@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Overlay</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  html, body {
+    margin: 0; padding: 0;
+    background: transparent;
+    overflow: hidden;
+    height: 100%;
+    user-select: none;
+    -webkit-app-region: no-drag;  /* raiz sem drag — libera bordas p/ redimensionar */
+  }
+
+  :root {
+    --green: #00e5a0; --yellow: #f5c518; --orange: #ff7b00; --red: #ff2d55;
+    --muted: #cfcfe0;
+  }
+
+  body {
+    font-family: 'Oswald', sans-serif;
+    position: relative;
+    height: 100vh; width: 100vw;
+  }
+
+  /* Borda fina translúcida — marca o contorno da janela sem preencher o fundo */
+  .frame-border {
+    position: absolute;
+    inset: 1px;
+    border: 1px solid rgba(255,255,255,0.16);
+    border-radius: 10px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Camada de arraste: cobre tudo MENOS uma faixa nas bordas,
+     que fica livre para o cursor de redimensionar do Windows aparecer. */
+  .drag-layer {
+    position: absolute;
+    inset: 9px;
+    -webkit-app-region: drag;
+    cursor: move;
+    z-index: 1;
+  }
+
+  .content {
+    position: relative;
+    z-index: 2;
+    height: 100%; width: 100%;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    pointer-events: none;   /* clique passa direto para a drag-layer abaixo */
+  }
+
+  .encerrar {
+    display: none;
+    font-family: 'Share Tech Mono', monospace;
+    font-weight: 700;
+    color: var(--red);
+    text-shadow: 0 2px 10px rgba(0,0,0,.85), 0 0 24px rgba(255,45,85,1);
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .encerrar.show { display: block; }
+
+  .time {
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -1px;
+    color: var(--green);
+    text-shadow: 0 2px 10px rgba(0,0,0,.85), 0 0 22px rgba(0,229,160,.7);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .time.yellow { color: var(--yellow); text-shadow: 0 2px 10px rgba(0,0,0,.85), 0 0 22px rgba(245,197,24,.7); }
+  .time.orange { color: var(--orange); text-shadow: 0 2px 10px rgba(0,0,0,.85), 0 0 22px rgba(255,123,0,.7); }
+  .time.red    { color: var(--red);    text-shadow: 0 2px 10px rgba(0,0,0,.85), 0 0 22px rgba(255,45,85,.8); }
+
+  .label {
+    font-family: 'Share Tech Mono', monospace;
+    letter-spacing: 3px;
+    color: var(--muted);
+    text-transform: uppercase;
+    text-shadow: 0 1px 6px rgba(0,0,0,.9);
+    text-align: center;
+    white-space: nowrap;
+  }
+  body.overtime .label { display: none; }
+
+  .hint {
+    position: absolute;
+    bottom: 3px;
+    left: 0; right: 0;
+    text-align: center;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 8px;
+    letter-spacing: 1px;
+    color: rgba(255,255,255,.35);
+    text-shadow: 0 1px 4px rgba(0,0,0,.9);
+    opacity: 0;
+    transition: opacity .2s;
+    z-index: 3;
+    pointer-events: none;
+  }
+  body:hover .hint { opacity: 1; }
+</style>
+</head>
+<body>
+  <div class="frame-border"></div>
+  <div class="drag-layer"></div>
+  <div class="content">
+    <div class="encerrar" id="encerrar">ENCERRAR</div>
+    <div class="time" id="time">00:00</div>
+    <div class="label" id="label">AGUARDANDO</div>
+  </div>
+  <div class="hint">arraste pelo centro · borda redimensiona · 2x clique fecha</div>
+
+<script>
+  const { ipcRenderer } = require('electron');
+
+  const timeEl     = document.getElementById('time');
+  const labelEl    = document.getElementById('label');
+  const encerrarEl = document.getElementById('encerrar');
+
+  let overtimeActive = false;
+  let blinkRAF = null;
+
+  // ── Escala dinâmica dos elementos conforme o tamanho real da janela ──
+  // Referência: tamanho padrão de abertura (400x220). Sem teto artificial,
+  // então aumentar a janela de fato aumenta os números.
+  const BASE_W = 400, BASE_H = 220;
+
+  function applyScale() {
+    const scale = Math.min(window.innerWidth / BASE_W, window.innerHeight / BASE_H);
+
+    const timeSize     = Math.max(20, Math.min(90 * scale, 480));
+    const labelSize     = Math.max(7, Math.min(11 * scale, 60));
+    const encerrarSize  = Math.max(14, Math.min(42 * scale, 260));
+    const overtimeTime  = Math.max(12, Math.min(24 * scale, 140));
+    const gap           = Math.max(2, Math.min(6 * scale, 40));
+
+    document.body.classList.contains('overtime')
+      ? (timeEl.style.fontSize = overtimeTime + 'px')
+      : (timeEl.style.fontSize = timeSize + 'px');
+
+    labelEl.style.fontSize = labelSize + 'px';
+    encerrarEl.style.fontSize = encerrarSize + 'px';
+    document.querySelector('.content').style.gap = gap + 'px';
+  }
+
+  window.addEventListener('resize', applyScale);
+  applyScale();
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+
+  function formatTime(secs) {
+    const neg = secs < 0;
+    const abs = Math.abs(secs);
+    const h = Math.floor(abs / 3600);
+    const m = Math.floor((abs % 3600) / 60);
+    const s = abs % 60;
+    return `${neg ? '-' : ''}${h > 0 ? pad(h) + ':' : ''}${pad(m)}:${pad(s)}`;
+  }
+
+  // Pisca ENCERRAR + timer negativo juntos, com o MESMO valor de opacidade,
+  // calculado a partir de um único relógio compartilhado (sincronia perfeita).
+  function startSyncBlink() {
+    if (blinkRAF) return;
+    const period = 1600;
+    function frame() {
+      const t = Date.now() % period;
+      const phase = (t / period) * Math.PI * 2;
+      const alpha = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(phase));
+      timeEl.style.opacity = alpha;
+      encerrarEl.style.opacity = alpha;
+      blinkRAF = requestAnimationFrame(frame);
+    }
+    frame();
+  }
+
+  function stopSyncBlink() {
+    if (blinkRAF) { cancelAnimationFrame(blinkRAF); blinkRAF = null; }
+    timeEl.style.opacity = '';
+    encerrarEl.style.opacity = '';
+  }
+
+  ipcRenderer.on('timer-state', (_event, state) => {
+    const { remainingSeconds, totalSeconds, running, started } = state;
+    const overtime = started && totalSeconds > 0 && remainingSeconds <= 0;
+
+    timeEl.textContent = formatTime(remainingSeconds);
+    timeEl.className = 'time';
+    document.body.classList.toggle('overtime', overtime);
+    applyScale();  // reaplica tamanhos (o overtime usa uma escala menor pro timer)
+
+    if (overtime) {
+      timeEl.classList.add('red');
+      encerrarEl.classList.add('show');
+      if (!overtimeActive) { overtimeActive = true; startSyncBlink(); }
+    } else {
+      encerrarEl.classList.remove('show');
+      if (overtimeActive) { overtimeActive = false; stopSyncBlink(); }
+
+      if (remainingSeconds <= 60) { timeEl.classList.add('red'); labelEl.textContent = 'ÚLTIMO MINUTO'; }
+      else if (remainingSeconds <= 120) { timeEl.classList.add('orange'); labelEl.textContent = '2 MIN RESTANTES'; }
+      else if (remainingSeconds <= 300) { timeEl.classList.add('yellow'); labelEl.textContent = '5 MIN RESTANTES'; }
+      else { labelEl.textContent = !started ? 'AGUARDANDO' : running ? 'EM ANDAMENTO' : 'PAUSADO'; }
+    }
+  });
+
+  // Fechar com duplo clique ou Esc
+  document.addEventListener('dblclick', () => ipcRenderer.send('overlay-request-close'));
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') ipcRenderer.send('overlay-request-close');
+  });
+</script>
+</body>
+</html>
