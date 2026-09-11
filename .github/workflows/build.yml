@@ -1,0 +1,31 @@
+name: Build Portable EXE
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:   # permite rodar manualmente pela aba Actions
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Instalar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Instalar dependências
+        run: npm install
+
+      - name: Gerar executável portátil (.exe)
+        run: npm run dist
+
+      - name: Publicar o .exe como artefato do build
+        uses: actions/upload-artifact@v4
+        with:
+          name: TimerPiP-portable
+          path: dist/*.exe
